@@ -1,0 +1,10 @@
+aiohttp==3.8.1
+aiosignal==1.2.0
+applicationinsights==0.11.10
+azure-common==1.1.27
+azure-core==1.20.1
+azure-eventhub==5.6.1
+azure-eventhub-checkpointstoreblob-aio==1.1.4
+azure-graphrbac==0.61.1
+azure-identity==1.7.1
+azure-storage-blob==12.10.0
