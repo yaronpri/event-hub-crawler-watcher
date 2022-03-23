@@ -1,3 +1,3 @@
 # event-hub-crawler-watcher
 
-This is a python program  print to console the current unprocessed event for given event hub for requested consumer group
+A python program which calculate current unprocessed event for given event hub for requested consumer group and print it to console
