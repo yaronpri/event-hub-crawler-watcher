@@ -1,16 +1,15 @@
-from multiprocessing import Event
 import sys, time, logging, urllib, hmac, hashlib, base64
-import asyncio, os
+import os
 import asyncio
-from datetime import datetime
 from azure.core.credentials import AzureSasCredential
 from azure.eventhub.aio import EventHubConsumerClient
-from azure.eventhub.extensions.checkpointstoreblobaio import BlobCheckpointStore
 from azure.storage.blob.aio import BlobServiceClient
 from numpy import int64
+import xml.etree.ElementTree as ET
+import requests_async as requests
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)  
+logger.setLevel(logging.INFO)
 
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
@@ -43,18 +42,17 @@ async def get_auth_token(eh_ns, eh_name, sas_name, sas_value):
   return  "SharedAccessSignature sr={}&sig={}&se={}&skn={}" \
                     .format(uri, signature, expiry, sas_name)
 
-async def getunprocessedevent(i_consumer_group):
-  generated_sas = await get_auth_token(eh_ns=event_hub_namespace, eh_name=event_hub_name, sas_name=eh_sas_name, sas_value=eh_sas_key)
-  cred = AzureSasCredential(generated_sas)
+async def getunprocessedevent(i_consumer_group, sas):
+תו  cred = AzureSasCredential(sas)
   eh_client = EventHubConsumerClient(fully_qualified_namespace=event_hub_fq,eventhub_name=event_hub_name,
         consumer_group=i_consumer_group, credential=cred)
   
   partition_ids = await eh_client.get_partition_ids()
   retval = 0
   for partitionId in partition_ids:
-    logger.info("Retrieve info partition - " + partitionId)
+    logger.info("Retrieve info partition - " + partitionId + " consumer group - " + i_consumer_group)
     partitioninfo = await eh_client.get_partition_properties(partitionId)
-    blob_path = prefix_path+consumer_group_name+"/checkpoint/"+partitionId
+    blob_path = prefix_path+i_consumer_group+"/checkpoint/"+partitionId
     blob_client = blob_service_client.get_blob_client(container = checkpoint_container, blob = blob_path)
     properties = await blob_client.get_blob_properties()
     seq_num = int64(properties.metadata["sequencenumber"])
@@ -69,16 +67,38 @@ async def getunprocessedevent(i_consumer_group):
       if tmp > 0:
         retval += tmp
   return retval
-    
+
+async def getallconsumergroup(sas):
+  logger.info("Retrieve all consumer groups for " + event_hub_namespace + "/" + event_hub_name)
+  consumers_groups = []
+  request_url = "https://{}.servicebus.windows.net/{}/consumergroups?timeout=60&api-version=2014-01".format(event_hub_namespace,event_hub_name)
+  response_consumers = await requests.get(request_url,headers={'Authorization':sas, 'Content-Type':'application/atom+xml;type=entry;charset=utf-8'})
+  if response_consumers.status_code == 200:    
+    xmlresponse = ET.fromstring(response_consumers.text)
+    logger.info(xmlresponse.tag)
+    for child in xmlresponse:
+      logger.info(child.tag)
+      if child.tag == '{http://www.w3.org/2005/Atom}entry':
+        for subchild in child:
+          if subchild.tag == '{http://www.w3.org/2005/Atom}title':
+            consumers_groups.append(subchild.text.lower())           
+  else:
+    logger.error('Error get consumer groups list, err code=' + response_consumers.status_code)
+  return consumers_groups
 
 async def main():
+  logger.info("Generate EH SAS")
+  generated_sas = await get_auth_token(eh_ns=event_hub_namespace, eh_name=event_hub_name, sas_name=eh_sas_name, sas_value=eh_sas_key)
   while True:
     if not consumer_group_name:
-      logger.info("TODO: go over all consumer groups")
-      #https://docs.microsoft.com/en-us/rest/api/eventhub/preview/consumer-groups/list-by-event-hub
-    else:
-      logger.info("Get consumer group info - " + consumer_group_name)
-      unprocess_msg = await getunprocessedevent(consumer_group_name)
+      retval = ""
+      consumers = await getallconsumergroup(sas=generated_sas)
+      for consumer in consumers:
+        unprocess_msg = await getunprocessedevent(i_consumer_group=consumer,sas=generated_sas)
+        retval += "{}:{}".format(consumer,unprocess_msg)
+      logger.info("{" + retval + "}")
+    else:     
+      unprocess_msg = await getunprocessedevent(i_consumer_group=consumer_group_name,sas=generated_sas)
       logger.warn(unprocess_msg)
     await asyncio.sleep(interval_process)
 

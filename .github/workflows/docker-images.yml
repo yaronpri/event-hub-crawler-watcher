@@ -1,0 +1,23 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ main ]    
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Docker Login
+      uses: docker/login-action@v1.6.0
+      with:
+        username: yaronpr
+        password: ${{ secrets.DOCKERHUB }}      
+    - uses: actions/checkout@v2
+    - name: Build the Docker image
+      run: docker build . --file Dockerfile --tag yaronpr/eventhubcrawler:latest
+    - name: Push the Docker image
+      run: docker push yaronpr/eventhubcrawler:latest
