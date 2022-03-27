@@ -15,16 +15,16 @@ logger.addHandler(logging.StreamHandler(sys.stdout))
 
 logger.info("Read environment variables...")
 
-blob_service_uri = os.environ.get("BLOB_URI", "https://p4incomingevents.blob.core.windows.net")
-blob_service_sas = os.environ.get("BLOB_SAS", "sv=2020-08-04&ss=bfqt&srt=sco&sp=rwdlacupitfx&se=2022-04-30T20:34:56Z&st=2022-03-23T13:34:56Z&spr=https&sig=QZVoy9CZBkawFVgRysA6D0HZ6Fo%2BNk2GNLJJUq9QvvY%3D")
-checkpoint_container = os.environ.get("BLOB_CHECKPOINT_CONTAINER", "step1checkpoint")
-event_hub_namespace = os.environ.get("EVENTHUB_NAMESPACE", "p4eventerhub")
-event_hub_name = os.environ.get("EVENTHUB_NAME", "step1")
-consumer_group_name = os.environ.get("EVENTHUB_CONSUMERGROUP", "")
+blob_service_uri = os.environ.get("BLOB_URI", "<YOUR CHECKPOINT AZURE STORAGE URI>")
+blob_service_sas = os.environ.get("BLOB_SAS", "<SAS TOKEN for the azure storage>")
+checkpoint_container = os.environ.get("BLOB_CHECKPOINT_CONTAINER", "<CONTAINER NAME of the checkpoint>")
+event_hub_namespace = os.environ.get("EVENTHUB_NAMESPACE", "<EVENT HUB NAMESPACE>")
+event_hub_name = os.environ.get("EVENTHUB_NAME", "<EVENT HUB NAME")
+consumer_group_name = os.environ.get("EVENTHUB_CONSUMERGROUP", "<CONSUMER GROUP NAME>")
 interval_process = os.environ.get("INTERVAL_CRAWLER", 120)
 event_hub_fq = "{}.servicebus.windows.net".format(event_hub_namespace)
 eh_sas_name = "RootManageSharedAccessKey"
-eh_sas_key = "gC/Bq/av03osuZajqZY/cdKe/0TmldQ0rwt4RCrTC0A="
+eh_sas_key = "<YOUR EVENT HUB ACCESS KEY>"
 prefix_path = event_hub_fq + "/" + event_hub_name + "/" 
 
 logger.info("Create EH and Blob Service clients")
