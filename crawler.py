@@ -25,7 +25,7 @@ interval_process = os.environ.get("INTERVAL_CRAWLER", 120)
 event_hub_fq = "{}.servicebus.windows.net".format(event_hub_namespace)
 eh_sas_name = "RootManageSharedAccessKey"
 eh_sas_key = "<YOUR EVENT HUB ACCESS KEY>"
-prefix_path = event_hub_fq + "/" + event_hub_name + "/" 
+prefix_path = event_hub_fq + "/" + event_hub_name + "/"
 
 logger.info("Create EH and Blob Service clients")
 blob_service_client = BlobServiceClient(account_url=blob_service_uri, credential=blob_service_sas)
@@ -49,8 +49,7 @@ async def getunprocessedevent(i_consumer_group, sas):
   
   partition_ids = await eh_client.get_partition_ids()
   retval = 0
-  for partitionId in partition_ids:
-    logger.info("Retrieve info partition - " + partitionId + " consumer group - " + i_consumer_group)
+  for partitionId in partition_ids:    
     partitioninfo = await eh_client.get_partition_properties(partitionId)
     blob_path = prefix_path+i_consumer_group+"/checkpoint/"+partitionId
     blob_client = blob_service_client.get_blob_client(container = checkpoint_container, blob = blob_path)
@@ -66,6 +65,7 @@ async def getunprocessedevent(i_consumer_group, sas):
       tmp = (sys.maxsize - last_enqueued) + seq_num
       if tmp > 0:
         retval += tmp
+    logger.info("Retrieve info partition - " + partitionId + " consumer group - " + i_consumer_group + " aggragate lag - " + str(retval))
   return retval
 
 async def getallconsumergroup(sas):
@@ -75,9 +75,7 @@ async def getallconsumergroup(sas):
   response_consumers = await requests.get(request_url,headers={'Authorization':sas, 'Content-Type':'application/atom+xml;type=entry;charset=utf-8'})
   if response_consumers.status_code == 200:    
     xmlresponse = ET.fromstring(response_consumers.text)
-    logger.info(xmlresponse.tag)
     for child in xmlresponse:
-      logger.info(child.tag)
       if child.tag == '{http://www.w3.org/2005/Atom}entry':
         for subchild in child:
           if subchild.tag == '{http://www.w3.org/2005/Atom}title':
@@ -101,10 +99,10 @@ async def main():
         unprocess_msg = await getunprocessedevent(i_consumer_group=consumer,sas=generated_sas)
         retval += "{}:{}".format(consumer,unprocess_msg)
         i+= 1
-      logger.warn("{" + retval + "}")
+      logger.warning("{" + retval + "}")
     else:     
       unprocess_msg = await getunprocessedevent(i_consumer_group=consumer_group_name,sas=generated_sas)
-      logger.warn(unprocess_msg)
+      logger.warning(unprocess_msg)
     await asyncio.sleep(interval_process)
 
 if __name__ == '__main__':
