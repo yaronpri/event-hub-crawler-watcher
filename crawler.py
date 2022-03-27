@@ -15,16 +15,16 @@ logger.addHandler(logging.StreamHandler(sys.stdout))
 
 logger.info("Read environment variables...")
 
-blob_service_uri = os.environ.get("BLOB_URI", "<YOUR CHECKPOINT AZURE STORAGE URI>")
-blob_service_sas = os.environ.get("BLOB_SAS", "<SAS TOKEN for the azure storage>")
-checkpoint_container = os.environ.get("BLOB_CHECKPOINT_CONTAINER", "<CONTAINER NAME of the checkpoint>")
-event_hub_namespace = os.environ.get("EVENTHUB_NAMESPACE", "<EVENT HUB NAMESPACE>")
-event_hub_name = os.environ.get("EVENTHUB_NAME", "<EVENT HUB NAME")
-consumer_group_name = os.environ.get("EVENTHUB_CONSUMERGROUP", "<CONSUMER GROUP NAME>")
+blob_service_uri = os.environ.get("BLOB_URI", "https://p4incomingevents.blob.core.windows.net")
+blob_service_sas = os.environ.get("BLOB_SAS", "sv=2020-08-04&ss=bfqt&srt=sco&sp=rwdlacupitfx&se=2022-04-30T20:34:56Z&st=2022-03-23T13:34:56Z&spr=https&sig=QZVoy9CZBkawFVgRysA6D0HZ6Fo%2BNk2GNLJJUq9QvvY%3D")
+checkpoint_container = os.environ.get("BLOB_CHECKPOINT_CONTAINER", "step1checkpoint")
+event_hub_namespace = os.environ.get("EVENTHUB_NAMESPACE", "p4eventerhub")
+event_hub_name = os.environ.get("EVENTHUB_NAME", "step1")
+consumer_group_name = os.environ.get("EVENTHUB_CONSUMERGROUP", "")
 interval_process = os.environ.get("INTERVAL_CRAWLER", 120)
 event_hub_fq = "{}.servicebus.windows.net".format(event_hub_namespace)
 eh_sas_name = "RootManageSharedAccessKey"
-eh_sas_key = "<YOUR EVENT HUB ACCESS KEY>"
+eh_sas_key = "gC/Bq/av03osuZajqZY/cdKe/0TmldQ0rwt4RCrTC0A="
 prefix_path = event_hub_fq + "/" + event_hub_name + "/" 
 
 logger.info("Create EH and Blob Service clients")
@@ -43,7 +43,7 @@ async def get_auth_token(eh_ns, eh_name, sas_name, sas_value):
                     .format(uri, signature, expiry, sas_name)
 
 async def getunprocessedevent(i_consumer_group, sas):
-תו  cred = AzureSasCredential(sas)
+  cred = AzureSasCredential(sas)
   eh_client = EventHubConsumerClient(fully_qualified_namespace=event_hub_fq,eventhub_name=event_hub_name,
         consumer_group=i_consumer_group, credential=cred)
   
@@ -81,7 +81,8 @@ async def getallconsumergroup(sas):
       if child.tag == '{http://www.w3.org/2005/Atom}entry':
         for subchild in child:
           if subchild.tag == '{http://www.w3.org/2005/Atom}title':
-            consumers_groups.append(subchild.text.lower())           
+            consumers_groups.append(subchild.text.lower())
+            break              
   else:
     logger.error('Error get consumer groups list, err code=' + response_consumers.status_code)
   return consumers_groups
@@ -93,9 +94,13 @@ async def main():
     if not consumer_group_name:
       retval = ""
       consumers = await getallconsumergroup(sas=generated_sas)
+      i = 0
       for consumer in consumers:
+        if (i > 0):
+          retval+= ","
         unprocess_msg = await getunprocessedevent(i_consumer_group=consumer,sas=generated_sas)
         retval += "{}:{}".format(consumer,unprocess_msg)
+        i+= 1
       logger.info("{" + retval + "}")
     else:     
       unprocess_msg = await getunprocessedevent(i_consumer_group=consumer_group_name,sas=generated_sas)
