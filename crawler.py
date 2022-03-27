@@ -101,7 +101,7 @@ async def main():
         unprocess_msg = await getunprocessedevent(i_consumer_group=consumer,sas=generated_sas)
         retval += "{}:{}".format(consumer,unprocess_msg)
         i+= 1
-      logger.info("{" + retval + "}")
+      logger.warn("{" + retval + "}")
     else:     
       unprocess_msg = await getunprocessedevent(i_consumer_group=consumer_group_name,sas=generated_sas)
       logger.warn(unprocess_msg)
