@@ -1,6 +1,7 @@
 import sys, time, logging, urllib, hmac, hashlib, base64
 import os
 import asyncio
+import datetime
 from azure.core.credentials import AzureSasCredential
 from azure.eventhub.aio import EventHubConsumerClient
 from azure.storage.blob.aio import BlobServiceClient
@@ -15,28 +16,66 @@ logger.addHandler(logging.StreamHandler(sys.stdout))
 
 logger.info("Read environment variables...")
 
-blob_service_uri = os.environ.get("BLOB_URI", "https://p4incomingevents.blob.core.windows.net")
-blob_service_sas = os.environ.get("BLOB_SAS", "sv=2020-08-04&ss=bfqt&srt=sco&sp=rwdlacupitfx&se=2022-04-30T20:34:56Z&st=2022-03-23T13:34:56Z&spr=https&sig=QZVoy9CZBkawFVgRysA6D0HZ6Fo%2BNk2GNLJJUq9QvvY%3D")
-checkpoint_container = os.environ.get("BLOB_CHECKPOINT_CONTAINER", "step1checkpoint")
-event_hub_namespace = os.environ.get("EVENTHUB_NAMESPACE", "p4eventerhub")
-event_hub_name = os.environ.get("EVENTHUB_NAME", "step1")
-consumer_group_name = os.environ.get("EVENTHUB_CONSUMERGROUP", "")
+blob_service_uri = os.environ.get("BLOB_URI", "<YOUR CHECKPOINT AZURE STORAGE URI>")
+blob_service_sas = os.environ.get("BLOB_SAS", "<SAS TOKEN for the azure storage>")
+checkpoint_container = os.environ.get("BLOB_CHECKPOINT_CONTAINER", "<CONTAINER NAME of the checkpoint>")
+event_hub_namespace = os.environ.get("EVENTHUB_NAMESPACE", "<EVENT HUB NAMESPACE>")
+event_hub_name = os.environ.get("EVENTHUB_NAME", "<EVENT HUB NAME")
+consumer_group_name = os.environ.get("EVENTHUB_CONSUMERGROUP", "<CONSUMER GROUP NAME>")
 interval_process = os.environ.get("INTERVAL_CRAWLER", 120)
 event_hub_fq = "{}.servicebus.windows.net".format(event_hub_namespace)
 eh_sas_name = "RootManageSharedAccessKey"
-eh_sas_key = "gC/Bq/av03osuZajqZY/cdKe/0TmldQ0rwt4RCrTC0A="
+eh_sas_key = "<YOUR EVENT HUB ACCESS KEY>"
+workspace_id = os.environ.get("WORKSPACE_ID","")
+workspace_sas = os.environ.get("WORKSPACE_KEY", "")
+workspace_log_type = os.environ.get("WORKSPACE_LOG_TYPE","")
 prefix_path = event_hub_fq + "/" + event_hub_name + "/" 
 
 logger.info("Create EH and Blob Service clients")
 blob_service_client = BlobServiceClient(account_url=blob_service_uri, credential=blob_service_sas)
 
+#sign header gor log
+async def build_signature(ws_id, ws_sas, date, content_length, method, content_type, resource):
+    x_headers = "x-ms-date:" + date
+    string_to_hash = method + "\n" + str(content_length) + "\n" + content_type + "\n" + x_headers + "\n" + resource
+    bytes_to_hash = bytes(string_to_hash, encoding="utf-8") 
+    decoded_key = base64.b64decode(ws_sas)
+    encoded_hash = base64.b64encode(hmac.new(decoded_key, bytes_to_hash, digestmod=hashlib.sha256).digest()).decode()
+    authorization = f"SharedKey {ws_id}:{encoded_hash}"
+    return authorization
+
+#POST data to log analytic
+async def post_data(ws_id, ws_sas, body, log_type):
+    method = "POST"
+    content_type = "application/json"
+    resource = "/api/logs"
+    rfc1123date = datetime.datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
+    content_length = len(body)
+    signature = await build_signature(ws_id, ws_sas, rfc1123date, content_length, method, content_type, resource)
+    uri = "https://" + ws_id + ".ods.opinsights.azure.com" + resource + "?api-version=2016-04-01"
+    headers = {
+        "content-type": content_type,
+        "Authorization": signature,
+        "Log-Type": log_type,
+        "x-ms-date": rfc1123date
+    }
+
+    logger.info(f"Sending to log analytic {content_length} bytes")
+    response = await requests.post(uri,data=body, headers=headers)
+    if (response.status_code >= 200 and response.status_code <= 299):
+        logger.info(f"OK sending to log analytic {response.status_code}")
+        return True
+    else:
+        logger.error(f"Error in response code: {response.status_code}")
+        return False
+
 #helper method for generating EH SAS Token
 async def get_auth_token(eh_ns, eh_name, sas_name, sas_value):   
   uri = urllib.parse.quote_plus("https://{}.servicebus.windows.net/{}" \
                                 .format(eh_ns,eh_name))
-  sas = sas_value.encode('utf-8')
+  sas = sas_value.encode("utf-8")
   expiry = str(int(time.time() + 10000))
-  string_to_sign = (uri + '\n' + expiry).encode('utf-8')
+  string_to_sign = (uri + "\n" + expiry).encode("utf-8")
   signed_hmac_sha256 = hmac.HMAC(sas, string_to_sign, hashlib.sha256)
   signature = urllib.parse.quote(base64.b64encode(signed_hmac_sha256.digest()))
   return  "SharedAccessSignature sr={}&sig={}&se={}&skn={}" \
@@ -82,7 +121,7 @@ async def getallconsumergroup(sas):
             consumers_groups.append(subchild.text)
             break              
   else:
-    logger.error('Error get consumer groups list, err code=' + response_consumers.status_code)
+    logger.error(f"Error get consumer groups list, err code={response_consumers.status_code}")
   return consumers_groups
 
 async def main():
@@ -101,7 +140,10 @@ async def main():
       unprocess_msg = await getunprocessedevent(i_consumer_group=consumer.lower(),sas=generated_sas)
       retval += "{}:{}".format(consumer,unprocess_msg)
       i+= 1
-    logger.warning("{" + retval + "}")
+    retval = "{" + retval + "}"
+    logger.warning(retval)
+    if not workspace_id:
+      await post_data(workspace_id, workspace_sas, retval, workspace_log_type)
     await asyncio.sleep(interval_process)
 
 if __name__ == '__main__':
